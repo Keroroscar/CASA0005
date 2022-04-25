@@ -4,6 +4,10 @@ author: '17086269'
 date: "8/20/2021"
 output: html_document
 ---
+
+# Loading data
+
+## OpenStreet Map data loading
 ```{r}
 ##Load all our data
 library(sf)
@@ -15,10 +19,11 @@ library(here)
 # read in all the spatial data and 
 # reproject it 
 
-OSM <- st_read(here::here("Data",
+OSM <- st_read(here::here("CHAP5",
+                          "Data",
                           "Raw",
                           "shapefile",
-                          "england-latest-free.shp", 
+                          "greater-london-latest-free.shp", 
                           "gis_osm_pois_a_free_1.shp")) %>%
   st_transform(., 27700) %>%
   #select hotels only
@@ -26,8 +31,11 @@ OSM <- st_read(here::here("Data",
 ```
 
 
+
+## WorldCities data loading
 ```{r}
-Worldcities <- st_read(here::here("Data",
+Worldcities <- st_read(here::here("CHAP5",
+                                  "Data",
                                   "Raw",
                                   "World_Cities", 
                                   "World_Cities.shp")) %>%
@@ -35,8 +43,11 @@ Worldcities <- st_read(here::here("Data",
 ```
 
 
+
+## UK outline data loading
 ```{r}
-UK_outline <- st_read(here::here("Data",
+UK_outline <- st_read(here::here("CHAP5",
+                                 "Data",
                                  "Raw",
                                  "gadm36_GBR_shp", 
                                  "gadm36_GBR_0.shp")) %>%
@@ -44,10 +55,14 @@ UK_outline <- st_read(here::here("Data",
 ```
 
 
+
+## London Borough data loading
 ```{r}
 #London Borough data is already in 277000
-Londonborough <- st_read(here::here("Data",
+Londonborough <- st_read(here::here("CHAP5",
+                                    "Data",
                                     "Raw",
+                                    "statistical-gis-boundaries-london",
                                     "statistical-gis-boundaries-london", 
                                     "ESRI", 
                                     "London_Borough_Excluding_MHW.shp"))%>%
@@ -55,6 +70,7 @@ Londonborough <- st_read(here::here("Data",
 ```
 
 
+## inside bnb csv file loading
 ```{r}
 # read in the .csv
 # and make it into spatial data
