@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+# Spatial Patterns
 library(tidyverse)
 library(tmap)
 library(geojsonio)
@@ -20,7 +21,453 @@ library(spdep)
 library(car)
 library(fs)
 library(janitor)
+
+library(dplyr)
+
+# Descriptive Statistics
+library(sf)
+library(sp)
+library(fs)
+library(here)
+library(raster)
+library(tidyverse)
+library(rmapshaper)
+library(ggplot2)
+library(plotly)
+
+#Map making
+library(tmap)
+library(grid)
+library(tmaptools)
+library(leafpop)
+library(leaflet)
+library(shiny)
+library(shinyjs)
+tmaptools::palette_explorer()
+# Display options
+options(dplyr.print_max = 1e9)
 ```
+
+#Draft
+```{r}
+here()
+```
+
+
+# Check Document List
+```{r}
+dir_info("Data/Raw")
+```
+
+
+# Loading datasets and reprojection(if necessary)
+```{r}
+# UK Outline
+st_layers(here("Data", "Raw", "UK_Outline","gadm36_GBR_gpkg","gadm36_GBR.gpkg"))
+# library(sf)
+UKoutline <- st_read(here("Data", "Raw", "UK_Outline","gadm36_GBR_gpkg","gadm36_GBR.gpkg"),
+                     layer='gadm36_GBR_0') %>% 
+                     st_set_crs(4326)
+
+print(UKoutline)
+st_crs(UKoutline)$proj4string
+
+
+
+#OSM
+OSM <- st_read(here::here("Data",
+                          "Raw",
+                          "shapefile",
+                          "greater-london-latest-free.shp", 
+                          "gis_osm_pois_a_free_1.shp")) %>%
+  st_transform(., 27700) %>%
+  # #select * only
+  # filter(fclass == '*')
+
+
+#World Cities
+Worldcities <- st_read(here::here("Data",
+                                  "Raw",
+                                  "World_Cities", 
+                                  "World_Cities.shp")) %>%
+  st_transform(., 27700)
+
+
+#UK outline
+UK_outline <- st_read(here::here("Data",
+                                 "Raw",
+                                 "UK_Outline",
+                                 "UK - outline -GADM shapefile",
+                                 "gadm36_GBR_shp", 
+                                 "gadm36_GBR_0.shp")) %>%
+  st_transform(., 27700)
+
+
+#London Borough
+Londonborough <- st_read(here::here("Data",
+                                    "Raw",
+                                    "statistical-gis-boundaries-london",
+                                    "statistical-gis-boundaries-london", 
+                                    "ESRI", 
+                                    "London_Borough_Excluding_MHW.shp"))%>%
+  st_transform(., 27700)
+
+
+London_MSOA <- st_read(here::here("Data",
+                                    "Raw",
+                                    "statistical-gis-boundaries-london",
+                                    "statistical-gis-boundaries-london", 
+                                    "ESRI", 
+                                    "MSOA_2011_London_gen_MHW.shp"))%>%
+  st_transform(., 27700)
+
+
+
+#Historical Flooding Map
+HisFlood <- st_read(here::here("Data",
+                                 "Raw",
+                                 "shapefile",
+                                 "EA_HistoricFloodMap_SHP_Full",
+                                 "data", 
+                                 "Historic_Flood_Map.shp")) %>%
+  st_transform(., 27700)
+
+#Recorded Flood Outline
+
+RecordFlood <- st_read(here::here("Data",
+                                 "Raw",
+                                 "shapefile",
+                                 "EA_RecordedFloodOutlines_SHP_Full",
+                                 "data", 
+                                 "Recorded_Flood_Outlines.shp")) %>%
+  st_transform(., 27700)
+
+RecordFlood <- subset(RecordFlood, start_date != "2050-01-01")
+
+
+#Just Flood - Flood risk zone
+FRZ <- st_read(here::here("Data",
+                                 "Raw",
+                                 "shapefile",
+                                 "RoFloodRiskZone_London",
+                                 "RoFRS_London.shp")) %>%
+  st_transform(., 27700)
+
+
+
+#CSV
+AvgPrice <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Avg Price.csv")
+
+IndexPrice <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Index Price.csv")
+
+SalesVol <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Sales Vol.csv")
+
+JustFlood <- read_csv("Data/Cleaned/csv/Climate Just-Flood/Climate Just-Flood_hazard_exposure_2011_Dec2014.csv")
+
+JustFlood_Index <- read_csv("Data/Cleaned/csv/Climate Just-Flood/Climate Just-Flood disadvantage_2011_Dec2014.csv")
+
+AvgPrice <- merge(Londonborough,AvgPrice, by="GSS_CODE")
+IndexPrice <- merge(Londonborough,IndexPrice, by="GSS_CODE")
+SalesVol <- merge(Londonborough,SalesVol, by="GSS_CODE")
+
+
+
+
+Worldcities <- Worldcities %>%
+  filter(CNTRY_NAME=='United Kingdom')
+
+
+
+Worldcities2 <- Worldcities %>%
+  filter(CNTRY_NAME=='United Kingdom'&
+           Worldcities$CITY_NAME=='Birmingham'|
+           Worldcities$CITY_NAME=='London'|
+           Worldcities$CITY_NAME=='Edinburgh')
+
+newbb <- c(xmin=-296000, ymin=5408, xmax=655696, ymax=1000000)
+  
+london <- c(xmin= 503568.2000000002,
+ymin= 155850.80000000075,
+xmax= 561957.5,
+ymax= 200933.90000000037)
+
+UK_outlinecrop <- UK_outline$geometry %>%
+  st_crop(., newbb)
+
+Flood_London <- RecordFlood$geometry %>% 
+  st_crop(., london)
+
+```
+
+
+
+
+#Descriptive Statistics
+```{r}
+plot(UKoutline$geom)
+
+#simplied UK outline for quicker process time during investigation
+UKSIMPLEoutline<-UKoutline %>%
+  ms_simplify(.,keep=0.05)
+
+plot(UKSIMPLEoutline$geom)
+
+
+plot(FRZ$geometry)
+```
+
+
+
+
+
+
+# Particular month observations - map
+```{r}
+tmap_mode(mode = c("plot", "view"))
+
+
+LdnAvgPrice = st_bbox(AvgPrice,
+                    crs = st_crs(AvgPrice)) %>% 
+  st_as_sfc()
+
+
+
+# plot each map
+tm1 <- tm_shape(AvgPrice) + 
+  tm_polygons(col = "Jan-98", 
+              palette = "PuBu", 
+              alpha = 0.5)+
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(Jan)", position=c(0,0.85), size=1.5)
+
+
+
+
+tm2 <- tm_shape(AvgPrice) +
+  tm_polygons(col = "Feb-98", 
+              palette = "PuBu", 
+              alpha = 0.5) +
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(Feb)", position=c(0,0.85), size=1.5)
+
+
+outline <- tm_shape(UK_outlinecrop)+ 
+  tm_polygons(col="darkslategray1")+
+  tm_layout(frame=FALSE)+
+  tm_shape(Worldcities2) +
+  tm_symbols(col = "red", scale = .5)+
+  tm_text("CITY_NAME", xmod=-1, ymod=-0.5)
+
+
+
+legend <- tm_shape(AvgPrice) +
+    tm_polygons(col = "Feb-98", 
+              palette = "PuBu") +
+    tm_scale_bar(position=c(0.2,0.04), text.size=0.6)+
+    tm_compass(north=0, position=c(0.65,0.6))+
+    tm_layout(legend.only = TRUE, legend.position=c(0.2,0.25),asp=0.1)+
+    tm_credits("(c) OpenStreetMap contrbutors and Air b n b", position=c(0.0,0.0))
+
+
+  
+t=tmap_arrange(tm1, tm2, outline, legend, ncol=3)
+
+t
+```
+
+
+
+#Inset map
+```{r}
+tmap_mode("plot")
+LdnAvgPrice = st_bbox(AvgPrice,
+                    crs = st_crs(AvgPrice)) %>% 
+  st_as_sfc()
+
+
+main <- tm_shape(AvgPrice, bbbox = LdnAvgPrice) + 
+  tm_polygons(col = "21-Jan", 
+              palette = "YlOrRd", 
+              alpha = 0.5)+
+  tm_scale_bar(position = c("left", "bottom"), text.size = .75)+
+  tm_layout(legend.position = c("right","top"), 
+            legend.text.size=.75, 
+            legend.title.size = 1.1,
+            frame=FALSE)+
+  tm_credits("(c) Land Registry", position=c(0.0,0.0))+
+  #tm_text(text = "NAME", size = .5, along.lines =T, remove.overlap=T,  auto.placement=F)+
+  tm_compass(type = "8star", position = c(0.06, 0.1)) +
+
+  #bottom left top right
+  tm_layout(inner.margin=c(0.02,0.02,0.02,0.2))
+
+
+
+inset = tm_shape(UK_outlinecrop) + tm_polygons() +
+  tm_shape(LdnAvgPrice)+ 
+  tm_borders(col = "grey40", lwd = 3)+
+    tm_layout(frame=FALSE,
+            bg.color = "transparent")+
+  tm_shape(Worldcities2) +
+  tm_symbols(col = "red", scale = .5)+
+  tm_text("CITY_NAME", xmod=-1.5, ymod=-0.5)
+
+
+
+library(grid)
+main
+print(inset, vp = viewport(0.86, 0.29, width = 0.5, height = 0.55))
+
+
+
+
+# tmap_mode("view")
+# tm_shape(AvgPrice) + 
+#   tm_polygons("Jan-98") 
+
+```
+
+
+```{r}
+# Loop map over months
+
+# LdnAvgPrice = st_bbox(AvgPrice,
+#                     crs = st_crs(AvgPrice)) %>% 
+#   st_as_sfc()
+
+
+month_name <- c("Jan",'Feb','Mar','Apr',"May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+
+#   stack()
+
+month_name[12]
+
+# rv <- c()
+myrange <- 1:12
+
+for(i in myrange) {
+  print(month_name[i])
+}
+
+
+for(i in myrange) {
+
+  f <- c(month_name[i],"98")
+  f <- paste(f, collapse="-")
+
+  # nam <- month_name[i]
+  
+  output <- tm_shape(AvgPrice) + 
+    tm_polygons(col = f, 
+                palette = "OrRd", 
+                alpha = 0.5)+
+    tm_legend(show=FALSE)+
+    tm_layout(frame=FALSE)+
+    tm_credits(f, position=c(0,0.85), size=0.5)
+  
+  assign(paste0(month_name[i], "map"), output)
+  
+  rm(output)
+  rm(f)
+}
+
+
+uklogo <- tm_shape(UK_outlinecrop)+ 
+  tm_polygons(col="darkslategray1")+
+  tm_layout(frame=FALSE)+
+  tm_shape(Worldcities2) +
+  tm_symbols(col = "red", scale = .5)+
+  tm_text("CITY_NAME", xmod=-1, ymod=-0.5)
+
+legend <- tm_shape(AvgPrice) +
+    tm_polygons(col = "Jun-98", 
+              palette = "OrRd") +
+    tm_scale_bar(position=c(3.2,0.04), text.size=0.6)+
+    tm_compass(north=0, position=c(3.2,0.6))+
+    tm_layout(legend.only = TRUE, legend.position=c(3.2,0.25),asp=0.1)+
+    tm_credits("Credit: OpenStreetMap contrbutors", position=c(0.0,0.0))
+
+# AVGPRICEmap <- rv %>%
+#   stack()
+  
+t=tmap_arrange(Janmap,Febmap,Marmap, Aprmap, Maymap,Junmap, Decmap, uklogo, legend, ncol=4)
+
+t
+```
+
+#Historical Flood Plot
+
+```{r}
+library(stringr)
+BoroughMap <- Londonborough %>%
+  dplyr::filter(str_detect(GSS_CODE, "^E09"))%>%
+  st_transform(., 27700)
+
+qtm(BoroughMap)
+
+
+Flood_London <- st_transform(Flood_London,27700)
+
+summary(Flood_London)
+
+tmap_mode("plot")
+
+t <- tm_shape(BoroughMap) +
+    tm_polygons(col = NA, alpha = 0.5, title='Flood Risk Zone - Greater London',) +
+    tm_shape(RecordFlood) +
+    tm_dots(col = "green")
+
+t
+
+tmap_save(t, 'Flood Risk Zone_GreaterLondon.png')
+
+library(grid)
+tmap_save(main,insets_tm = inset,insets_vp=viewport(x=0.86, y=0.29, width=.5, height=.55), filename="test.pdf", dpi=600)
+
+
+RecordFlood <- distinct(RecordFlood)
+
+RecordFloodSub <- RecordFlood[BoroughMap,]
+
+
+
+
+```
+
+
+
+
+
+
+
+#Regression Plot
+```{r}
+q <- qplot(x = `Unauthorised Absence in All Schools (%) - 2013`, 
+           y = `Average GCSE capped point scores - 2014`, 
+           data=LonWardProfiles)
+
+#plot with a regression line - note, I've added some jitter here as the x-scale is rounded
+q + stat_smooth(method="lm", se=FALSE, size=1) + 
+  geom_jitter()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## R Markdown
 

@@ -1,0 +1,269 @@
+---
+title: "Point Pattern Analysis"
+author: '17086269'
+date: '2022-05-01'
+output: html_document
+---
+
+
+```{r}
+# Spatial Patterns
+library(tidyverse)
+library(tmap)
+library(geojsonio)
+library(plotly)
+library(rgdal)
+library(broom)
+library(mapview)
+library(crosstalk)
+library(sf)
+library(sp)
+library(spdep)
+library(car)
+library(fs)
+library(janitor)
+
+library(dplyr)
+library(stringr)
+
+library(spatstat)
+
+
+# Descriptive Statistics
+library(sf)
+library(sp)
+library(fs)
+library(here)
+library(raster)
+library(tidyverse)
+library(rmapshaper)
+library(ggplot2)
+library(plotly)
+
+#Map making
+library(tmap)
+library(grid)
+library(tmaptools)
+library(leafpop)
+library(leaflet)
+leaflet::providers
+library(shiny)
+library(shinyjs)
+tmaptools::palette_explorer()
+
+# Display options
+options(dplyr.print_max = 1e9)
+
+```
+
+
+```{r}
+library(raster)
+library(fpc)
+
+FRZ <- st_read(here::here("Data",
+                                 "Raw",
+                                 "shapefile",
+                                 "RoFloodRiskZone_London",
+                                 "RoFRS_London.shp")) %>%
+  st_transform(., 27700)
+
+RecordFlood <- st_read(here::here("Data",
+                                 "Raw",
+                                 "shapefile",
+                                 "EA_RecordedFloodOutlines_SHP_Full",
+                                 "data", 
+                                 "Recorded_Flood_Outlines.shp")) %>%
+  st_transform(., 27700)
+
+RecordFlood <- subset(RecordFlood, start_date != "2050-01-01")
+
+
+
+#Geometry outline
+London_MSOA <- st_read(here::here("Data",
+                                    "Raw",
+                                    "statistical-gis-boundaries-london",
+                                    "statistical-gis-boundaries-london", 
+                                    "ESRI", 
+                                    "MSOA_2011_London_gen_MHW.shp"))%>%
+  st_transform(., 27700)
+
+
+Londonborough <- st_read(here::here("Data",
+                                    "Raw",
+                                    "statistical-gis-boundaries-london",
+                                    "statistical-gis-boundaries-london", 
+                                    "ESRI", 
+                                    "London_Borough_Excluding_MHW.shp"))%>%
+  st_transform(., 27700)
+
+library(stringr)
+BoroughMap <- Londonborough %>%
+  dplyr::filter(str_detect(GSS_CODE, "^E09"))%>%
+  st_transform(., 27700)
+
+qtm(BoroughMap)
+
+```
+
+
+
+```{r}
+tmap_mode("plot")
+
+tm_shape(BoroughMap) +
+  tm_polygons(col = NA, alpha = 0.5, labels = c ("0", "more than five")) +
+tm_shape(RecordFlood) +
+  tm_dots(col = "rec_grp_id")
+
+```
+
+
+#Extract RBKC and river-south
+```{r}
+#extract the borough
+
+RBKC <- BoroughMap %>%
+  filter(., NAME=="Kensington and Chelsea")
+
+Southwark <- BoroughMap %>%
+  filter(., NAME=="Southwark")
+
+Wandsworth <- BoroughMap %>%
+  filter(., NAME=="Wandsworth")
+
+Lambeth <- BoroughMap %>%
+  filter(., NAME=="Lambeth")
+
+HF <- BoroughMap %>%
+  filter(., NAME=="Hammersmith and Fulham")
+
+Richmond <- BoroughMap %>%
+  filter(., NAME=="Richmond upon Thames")
+
+BoroughMap$NAME
+
+
+#Check to see that the correct borough has been pulled out
+tm_shape(RBKC) +
+  tm_polygons(col = NA, alpha = 0.5)
+```
+
+```{r}
+
+study_area <- Southwark
+
+#clip the data to our single borough
+FRZsub <- FRZ[study_area,]
+RecordFloodsub <- RecordFlood[study_area,]
+#check that it's worked
+tmap_mode("plot")
+tmap_style("cobalt")
+
+
+tm1 <- 
+tm_shape(RBKC) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Kensington and Chelsea', 
+          title.position = c('right', 'top'))
+
+
+tm2 <- 
+tm_shape(Southwark) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Southwark', 
+          title.position = c('right', 'top'))
+
+
+
+tm3 <- 
+tm_shape(Wandsworth) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Wandsworth', 
+          title.position = c('right', 'top'))
+
+
+
+tm4 <- 
+tm_shape(Lambeth) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Lambeth', 
+          title.position = c('right', 'top'))
+
+
+tm5 <- 
+tm_shape(HF) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Hammersmith and Fulham', 
+          title.position = c('right', 'top'))
+
+
+tm6 <- 
+tm_shape(Richmond) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(FRZ) +
+  tm_dots(col = "red")+
+tm_layout(title= 'Richmond upon Thames', 
+          title.position = c('right', 'top'))
+
+t=tmap_arrange(tm1,tm2,tm3, tm4, tm5,tm6, ncol=3)
+
+t
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

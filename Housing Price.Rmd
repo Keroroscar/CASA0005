@@ -1,0 +1,328 @@
+---
+title: "Housing Price-trend"
+author: '17086269'
+date: '2022-05-03'
+output: html_document
+---
+
+```{r}
+# Spatial Patterns
+library(tidyverse)
+library(tidyr)
+library(tmap)
+library(geojsonio)
+library(plotly)
+library(rgdal)
+library(broom)
+library(mapview)
+library(crosstalk)
+library(sf)
+library(sp)
+library(spdep)
+library(car)
+library(fs)
+library(janitor)
+
+library(ggthemes)
+
+
+library(dplyr)
+library(stringr)
+
+library(spatstat)
+
+
+# Descriptive Statistics
+library(sf)
+library(sp)
+library(fs)
+library(here)
+library(raster)
+library(tidyverse)
+library(rmapshaper)
+library(ggplot2)
+theme_set(theme_minimal())
+library(plotly)
+
+library(lubridate)
+
+#Map making
+library(tmap)
+library(grid)
+library(tmaptools)
+library(leafpop)
+library(leaflet)
+# leaflet::providers
+library(shiny)
+library(shinyjs)
+# tmaptools::palette_explorer()
+
+# Display options
+options(dplyr.print_max = 1e9)
+
+```
+
+
+# Import
+```{r}
+AvgPrice <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Avg Price.csv")
+
+IndexPrice <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Index Price.csv")
+
+SalesVol <- read_csv("Data/Cleaned/csv/[Land-Registry]UK House price index 1995-2021-Monthly/Sales Vol.csv")
+
+
+# seq(as.Date("1995-1-1"), as.Date("2021-9-1"), by = "years")
+
+
+
+
+#Pivot_Long
+Long_AvgPrice <- AvgPrice %>% 
+  pivot_longer(
+    !(GSS_CODE | NAME),
+    names_to = "time",
+    values_to = "Average_Price",
+    values_drop_na = TRUE
+  )
+
+Long_IndexPrice <- IndexPrice %>% 
+  pivot_longer(
+    !(GSS_CODE | NAME),
+    names_to = "time",
+    values_to = "Average_Index_Price",
+    values_drop_na = TRUE
+  )
+
+Long_SalesVol <- SalesVol %>% 
+  pivot_longer(
+    !(GSS_CODE | NAME),
+    names_to = "time",
+    values_to = "Average_Sales_Volume",
+    values_drop_na = TRUE
+  )
+
+
+
+drop_cols <- "GSS_CODE"
+# drop_cols <- c("genome", "region")        # if remove multiple columns
+
+# data <- data[, ! names(data) %in% cols.dont.want, drop = F]
+
+
+#Pivot_Wide
+Wide_AvgPrice <- subset(Long_AvgPrice, select = -GSS_CODE ) %>% 
+  pivot_wider(
+    names_from = "NAME",
+    values_from = "Average_Price"
+  ) 
+
+Wide_IndexPrice <- subset(Long_IndexPrice, select = -GSS_CODE ) %>% 
+  pivot_wider(
+    names_from = "NAME",
+    values_from = "Average_Index_Price"
+  )
+
+Wide_SalesVol <- subset(Long_SalesVol, select = -GSS_CODE ) %>% 
+  pivot_wider(
+    names_from = "NAME",
+    values_from = "Average_Sales_Volume"
+  )
+
+#Deal with special names
+names(Wide_AvgPrice)<-str_replace_all(names(Wide_AvgPrice), c(" " = "_" , "&" = "and" ))
+
+names(Wide_IndexPrice)<-str_replace_all(names(Wide_IndexPrice), c(" " = "_" , "&" = "and" ))
+
+names(Wide_SalesVol)<-str_replace_all(names(Wide_SalesVol), c(" " = "_" , "&" = "and" ))
+
+
+
+#date format conversion
+Long_AvgPrice$time <- as.Date(Long_AvgPrice$time, "%m/%d/%Y")
+Long_IndexPrice$time <- as.Date(Long_IndexPrice$time, "%m/%d/%Y")
+Long_SalesVol$time <- as.Date(Long_SalesVol$time, "%m/%d/%Y")
+
+
+
+summary(Long_AvgPrice %>% 
+          filter(between(time, as.Date("2017-01-01"), as.Date("2017-12-01"))))
+summary(Long_SalesVol%>% 
+          filter(between(time, as.Date("2017-01-01"), as.Date("2017-12-01"))))
+```
+
+
+#Summary Statistics
+```{r}
+
+
+AvgPrice_group <- Long_AvgPrice %>%
+  # mutate(UKdiff = averagelifeexpectancy-81.16) %>%
+  group_by(NAME)
+  # summarise(range=max(UKdiff)-min(UKdiff), count=n(), Average=mean(UKdiff))
+
+unique(AvgPrice_group$NAME)
+```
+
+
+
+```{r}
+options(repr.plot.width=30, repr.plot.height=8)
+#OR ggplot plot
+
+
+colnames(Wide_AvgPrice)
+
+
+Boroughs_West <- c("Kensington & Chelsea", "Brent", "Ealing", "Hammersmith & Fulham", "Richmond upon Thames" )
+
+Boroughs_South <- c("Wandsworth", "Lambeth", "Southwark", "Lewisham" )
+
+#1
+# df <- AvgPrice %>%
+#   select(time, NAME, Average_Price) %>%
+#   gather(key = "variable", value = "value", -time)
+# head(df)
+
+
+Wide_date <- Wide_AvgPrice %>% 
+         filter(between(time, as.Date("2011-01-01"), as.Date("2017-12-01")))
+
+brks <- Wide_date$time[seq(1, length(Wide_AvgPrice$time), 12)]
+lbls <- lubridate::year(brks)
+# lbls <- paste0(month.abb[month(brks)], " ", lubridate::year(brks))
+# lbls <- lubridate::month(brks)
+
+
+
+
+Borough_West <- 
+  ggplot(Long_AvgPrice %>% 
+         filter(between(time, as.Date("2011-01-01"), as.Date("2017-12-01"))) %>% 
+         filter(NAME == Boroughs_West), 
+       aes(x = time, y = Average_Price)) + 
+  geom_line(aes(color = NAME, linetype = NAME)) + 
+  scale_color_brewer(palette = "Dark2")+
+  scale_x_date(labels = lbls, 
+               breaks = brks) +  # change to monthly ticks and labels
+  theme(axis.text.x = element_text(angle = 45, vjust=0.5, hjust = 1, size = 8))+
+  labs(
+  x = "time",
+  y = "Average House Price",
+  title = "2011-2017 Average House Price in West London", 
+   subtitle="Monthly released - Borough Level", 
+   caption="Source: Land Registry")+
+  theme(aspect.ratio=10/15)+
+  theme_solarized()
+Borough_West
+
+
+
+
+  # scale_fill_manual(values=c("#003f5c", "#58508d", "#bc5090", "#ff6361", "#ffa600"))+
+```
+
+
+```{r}
+#River South
+Borough_South <- 
+  ggplot(Long_AvgPrice %>% 
+         filter(between(time, as.Date("2011-01-01"), as.Date("2017-12-01"))) %>% 
+         filter(NAME == Boroughs_South), 
+       aes(x = time, y = Average_Price)) + 
+  geom_line(aes(color = NAME, linetype = NAME)) + 
+  scale_color_brewer(palette = "Dark2")+
+  scale_x_date(labels = lbls, 
+               breaks = brks) +  # change to monthly ticks and labels
+  theme(axis.text.x = element_text(angle = 45, vjust=0.5, hjust = 1, size = 8))+
+  labs(
+  x = "time",
+  y = "Average House Price",
+  title = "2011-2017 Average House Price in South London", 
+   subtitle="Monthly released - Borough Level", 
+   caption="Source: Land Registry")+
+  theme(aspect.ratio=10/18)+
+  theme_solarized()+
+  scale_y_continuous(labels = scales::comma)
+Borough_South
+
+
+Borough_South <- 
+  ggplot(Long_AvgPrice %>% 
+         filter(between(time, as.Date("2011-01-01"), as.Date("2017-12-01"))) %>% 
+         filter(NAME == Boroughs_South), 
+       aes(x = time, y = Average_Price)) + 
+  geom_line(aes(color = NAME, linetype = NAME)) + 
+  scale_color_brewer(palette = "Dark2") +
+  labs(                                       
+  x = "time",
+  y = "Average House Price",
+  title = "2011-2017 Average House Price in South London")+
+  theme(aspect.ratio=10/15)+
+  scale_y_continuous(labels = scales::comma)
+  # scale_fill_manual(values=c("#003f5c", "#58508d", "#bc5090", "#ff6361", "#ffa600"))+
+
+# require(scales)
+# Borough_South + scale_y_continuous(labels = comma)
+
+Borough_West
+Borough_South
+
+unique(Long_AvgPrice$NAME)
+```
+
+
+```{r}
+#2 Call specific boroughs
+ggplot(Wide_AvgPrice%>% 
+         filter(time >= as.Date("2011-01-01") & time <= as.Date("2017-12-01") ), 
+       aes(x= time)) + 
+  geom_line(aes(y = Kensington_and_Chelsea), color = "darkred") + 
+  geom_line(aes(y = Brent), color="steelblue", linetype="twodash") +
+  geom_line(aes(y = Ealing), color="black", linetype="twodash") +
+  geom_line(aes(y = Hammersmith_and_Fulham), color="green", linetype="twodash") +
+  geom_line(aes(y = Richmond_upon_Thames), color="yellow", linetype="twodash") 
+  
+  
+ggplot(Wide_AvgPrice%>% 
+         filter(time >= as.Date("2011-01-01") & time <= as.Date("2017-12-01") ), 
+       aes(x= time)) + 
+  geom_line(aes(y = Wandsworth), color="steelblue", linetype="twodash") +
+  geom_line(aes(y = Lambeth), color="black", linetype="twodash") +
+  geom_line(aes(y = Southwark), color="green", linetype="twodash") +
+  geom_line(aes(y = Lewisham), color="yellow", linetype="twodash") 
+  
+
+
+```
+
+
+
+
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
